@@ -50,7 +50,6 @@ const DEFAULT_FLEET: VesselDef[] = [
   { id:'studylog-ai',name:'StudyLog.ai',tier:1,url:`https://studylog-ai.${SUBDOMAIN}`,repo:'Lucineer/studylog-ai',role:'Hippocampus — learning',captain:'crane',description:'AI classroom, strategic priority' },
   { id:'makerlog-ai',name:'MakerLog.ai',tier:1,url:`https://makerlog-ai.${SUBDOMAIN}`,repo:'Lucineer/makerlog-ai',role:'Motor cortex — coding',captain:'pickup',description:'Smarter Claude Code' },
   { id:'dmlog-ai',name:'DMLog.ai',tier:1,url:`https://dmlog-ai.${SUBDOMAIN}`,repo:'Lucineer/dmlog-ai',role:'Prefrontal — creativity',captain:'excavator',description:'AI Dungeon Master, 29K lines' },
-  { id:'actualizer-ai',name:'Actualizer.ai',tier:1,url:`https://actualizer-ai.${SUBDOMAIN}`,repo:'Lucineer/actualizer-ai',role:'CNS — strategy',captain:'motorcycle',description:'Reverse-actualization, 7 horizons' },
   { id:'deckboss-ai',name:'DeckBoss.ai',tier:1,url:`https://deckboss-ai.${SUBDOMAIN}`,repo:'Lucineer/deckboss-ai',role:'Cerebellum — coordination',captain:'pickup',description:'Spreadsheet where cells are agents' },
   { id:'fishinglog-ai',name:'FishingLog.ai',tier:1,url:`https://fishinglog-ai.${SUBDOMAIN}`,repo:'Lucineer/fishinglog-ai',role:'Vestibular — patterns',captain:'pickup',description:'Fishing companion' },
   { id:'luciddreamer-ai',name:'LucidDreamer.ai',tier:1,url:`https://luciddreamer-ai.${SUBDOMAIN}`,repo:'Lucineer/luciddreamer-ai',role:'REM — consolidation',captain:'motorcycle',description:'Preprocessing intelligence' },
@@ -77,6 +76,13 @@ const DEFAULT_FLEET: VesselDef[] = [
   { id:'nightlog-ai',name:'NightLog.ai',tier:3,url:`https://nightlog-ai.${SUBDOMAIN}`,repo:'Lucineer/nightlog-ai',role:'Night mode',captain:'motorcycle',description:'Autonomous tasks' },
   { id:'personlog-ai',name:'PersonLog.ai',tier:3,url:`https://personlog-ai.${SUBDOMAIN}`,repo:'Lucineer/personlog-ai',role:'Social',captain:'pickup',description:'Contact management' },
   { id:'spreadsheet-moment',name:'Spreadsheet Moment',tier:3,url:`https://spreadsheet-moment.${SUBDOMAIN}`,repo:'Lucineer/spreadsheet-moment',role:'Demo',captain:'motorcycle',description:'Spreadsheet agent demo' },
+  { id:'fleet-orchestrator',name:'Fleet Orchestrator',tier:2,url:`https://fleet-orchestrator.${SUBDOMAIN}`,repo:'Lucineer/fleet-orchestrator',role:'Captain Bridge',captain:'motorcycle',description:'CRP-39, HCQ, DEB, Trust' },
+  { id:'dream-engine',name:'Dream Engine',tier:2,url:`https://dream-engine.${SUBDOMAIN}`,repo:'Lucineer/dream-engine',role:'REM consolidation',captain:'motorcycle',description:'Background consolidation protocol' },
+  { id:'seed-ui',name:'Seed UI',tier:2,url:`https://seed-ui.${SUBDOMAIN}`,repo:'Lucineer/seed-ui',role:'Presentation layers',captain:'motorcycle',description:'5 presentation layers' },
+  { id:'actualizer-ai',name:'Actualizer.ai',tier:2,url:`https://actualizer-ai.${SUBDOMAIN}`,repo:'Lucineer/actualizer-ai',role:'RA engine',captain:'motorcycle',description:'7 horizons, multi-model' },
+  { id:'cocapn',name:'Cocapn Core',tier:2,url:`https://cocapn.${SUBDOMAIN}`,repo:'Lucineer/cocapn',role:'Protocol layer',captain:'motorcycle',description:'Core platform' },
+  { id:'local-bridge',name:'Local Bridge',tier:2,url:`https://local-bridge.${SUBDOMAIN}`,repo:'Lucineer/local-bridge',role:'Local models',captain:'motorcycle',description:'Ollama/vLLM tunnel' },
+  { id:'membership-api',name:'Membership API',tier:2,url:`https://membership-api.${SUBDOMAIN}`,repo:'Lucineer/membership-api',role:'Tier management',captain:'motorcycle',description:'Pay-for-convenience' },
 ];
 
 // ── Health Check Engine ──
