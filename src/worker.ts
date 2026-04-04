@@ -2,6 +2,9 @@
 // Fleet Orchestrator — Captain's Bridge
 // Manages fleet lifecycle: health, registration, deployment, upgrades.
 // Auto-polls all vessels, tracks history, coordinates inter-vessel ops.
+// P0 Protocols: HCQ (Circuit Quarantine) + DEB (Execution Bonds)
+//
+// 2026-04-03 — Added Hierarchical Circuit Quarantine + Deterministic Execution Bonds
 //
 // Superinstance & Lucineer (DiGennaro et al.) — 2026-04-03
 // ═══════════════════════════════════════════════════════════════════════════
@@ -19,8 +22,22 @@ interface VesselDef {
 }
 
 interface HealthResult {
-  vesselId: string; url: string; status: 'healthy' | 'degraded' | 'down' | 'timeout';
+  vesselId: string; url: string; status: 'healthy' | 'degraded' | 'down' | 'timeout' | 'quarantined';
   statusCode: number; latencyMs: number; timestamp: number; error?: string;
+}
+
+// ── HCQ: Hierarchical Circuit Quarantine ──
+interface QuarantineEntry {
+  vesselId: string; reason: string; quarantinedAt: number; errorRate: number;
+  consecutiveFails: number; autoLiftAt: number; // auto-lift after 15min
+}
+
+// ── DEB: Deterministic Execution Bonds ──
+interface ExecutionBond {
+  taskId: string; vesselId: string; payload: string; // SHA256
+  status: 'pending' | 'claimed' | 'committed' | 'failed';
+  claimedAt: number | null; leaseExpires: number | null;
+  createdAt: number; completedAt: number | null;
 }
 
 interface FleetSnapshot {
@@ -300,6 +317,75 @@ export default {
           bidUrl: `https://bid-engine.${SUBDOMAIN}/api/portfolios`,
         },
       }), { headers: h });
+    }
+
+    // ── HCQ: Quarantine Management ──
+    if (url.pathname === '/api/quarantine' && request.method === 'GET') {
+      const list = await env.FLEET_KV.list({ prefix: 'quarantine:', limit: 50 });
+      const entries: QuarantineEntry[] = [];
+      for (const key of list.keys) {
+        const entry = await env.FLEET_KV.get<QuarantineEntry>(key.name, 'json');
+        if (entry) entries.push(entry);
+      }
+      return new Response(JSON.stringify({ count: entries.length, entries }), { headers: h });
+    }
+    if (url.pathname === '/api/quarantine' && request.method === 'POST') {
+      const body = await request.json() as { vesselId: string; reason: string; errorRate?: number };
+      const entry: QuarantineEntry = {
+        vesselId: body.vesselId, reason: body.reason,
+        quarantinedAt: Date.now(), errorRate: body.errorRate || 1.0,
+        consecutiveFails: 3, autoLiftAt: Date.now() + 900000, // 15 min
+      };
+      await env.FLEET_KV.put(`quarantine:${body.vesselId}`, JSON.stringify(entry), { expirationTtl: 3600 });
+      return new Response(JSON.stringify(entry), { headers: h, status: 201 });
+    }
+    if (url.pathname === '/api/quarantine/lift' && request.method === 'POST') {
+      const body = await request.json() as { vesselId: string };
+      await env.FLEET_KV.delete(`quarantine:${body.vesselId}`);
+      return new Response(JSON.stringify({ lifted: true, vesselId: body.vesselId, at: Date.now() }), { headers: h });
+    }
+
+    // ── DEB: Execution Bonds ──
+    if (url.pathname === '/api/bonds' && request.method === 'GET') {
+      const status = url.searchParams.get('status');
+      const list = await env.FLEET_KV.list({ prefix: 'bond:', limit: 100 });
+      const bonds: ExecutionBond[] = [];
+      for (const key of list.keys) {
+        const bond = await env.FLEET_KV.get<ExecutionBond>(key.name, 'json');
+        if (bond && (!status || bond.status === status)) bonds.push(bond);
+      }
+      return new Response(JSON.stringify({ count: bonds.length, bonds }), { headers: h });
+    }
+    if (url.pathname === '/api/bonds' && request.method === 'POST') {
+      const body = await request.json() as { vesselId: string; payload: string };
+      const encoder = new TextEncoder();
+      const hash = await crypto.subtle.digest('SHA-256', encoder.encode(body.payload + body.vesselId + Date.now()));
+      const taskId = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+      const bond: ExecutionBond = {
+        taskId, vesselId: body.vesselId, payload: body.payload,
+        status: 'pending', claimedAt: null, leaseExpires: null,
+        createdAt: Date.now(), completedAt: null,
+      };
+      await env.FLEET_KV.put(`bond:${taskId}`, JSON.stringify(bond), { expirationTtl: 86400 });
+      return new Response(JSON.stringify(bond), { headers: h, status: 201 });
+    }
+    if (url.pathname === '/api/bonds/claim' && request.method === 'POST') {
+      const body = await request.json() as { taskId: string; vesselId: string };
+      const bond = await env.FLEET_KV.get<ExecutionBond>(`bond:${body.taskId}`, 'json');
+      if (!bond || bond.status !== 'pending') {
+        return new Response(JSON.stringify({ error: 'not claimable', taskId: body.taskId }), { status: 409, headers: h });
+      }
+      bond.status = 'claimed'; bond.claimedAt = Date.now(); bond.leaseExpires = Date.now() + 60000; // 60s lease
+      await env.FLEET_KV.put(`bond:${body.taskId}`, JSON.stringify(bond), { expirationTtl: 86400 });
+      return new Response(JSON.stringify(bond), { headers: h });
+    }
+    if (url.pathname === '/api/bonds/complete' && request.method === 'POST') {
+      const body = await request.json() as { taskId: string; vesselId: string };
+      const bond = await env.FLEET_KV.get<ExecutionBond>(`bond:${body.taskId}`, 'json');
+      if (!bond) return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: h });
+      bond.status = 'committed'; bond.completedAt = Date.now();
+      await env.FLEET_KV.put(`bond:${body.taskId}`, JSON.stringify(bond), { expirationTtl: 86400 });
+      return new Response(JSON.stringify(bond), { headers: h });
     }
 
     return new Response('Not found', { status: 404 });
