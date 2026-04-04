@@ -884,6 +884,50 @@ setInterval(load, 30000); // refresh every 30s
       return new Response(dashboardHtml, { headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': "default-src 'self' https://membership-api.casey-digennaro.workers.dev; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://membership-api.casey-digennaro.workers.dev;" } });
     }
 
+
+    // ── Moat Evolution: Data → Wisdom → Entity → Sovereignty → Legacy ──
+    // Time-dependent compounding — the fleet's strategic position
+    if (url.pathname === '/api/moat') {
+      const vessels = await env.FLEET_KV.list({ prefix: 'vessel:', limit: 50 });
+      const crystals = await env.FLEET_KV.list({ prefix: 'crystal:', limit: 200 });
+      const bonds = await env.FLEET_KV.list({ prefix: 'bond:', limit: 200 });
+      const policies = await env.FLEET_KV.list({ prefix: 'friction-policy:', limit: 50 });
+      const pods = await env.FLEET_KV.list({ prefix: 'pod:', limit: 100 });
+      
+      const M = vessels.keys.length;
+      const C = crystals.keys.length;
+      const B = bonds.keys.length;
+      const F = policies.keys.length;
+      const P = pods.keys.length;
+      
+      // Evolution stages based on fleet metrics
+      const stages = [
+        { name: 'DATA', threshold: 0, description: 'Collecting signals and telemetry', icon: '📊' },
+        { name: 'WISDOM', threshold: 10, description: 'Crystallizing patterns from data', icon: '🧠' },
+        { name: 'ENTITY', threshold: 50, description: 'Fleet behaves as coherent intelligence', icon: '⚡' },
+        { name: 'SOVEREIGNTY', threshold: 200, description: 'Self-governing, self-evolving fleet', icon: '🏛️' },
+        { name: 'LEGACY', threshold: 1000, description: 'Civilizational infrastructure', icon: '🌍' },
+      ];
+      
+      // Score = weighted combination
+      const score = (M * 3) + (C * 5) + (B * 2) + (F * 4) + (P * 3);
+      let currentStage = stages[0];
+      for (const s of stages) {
+        if (score >= s.threshold) currentStage = s;
+      }
+      const nextStage = stages[stages.indexOf(currentStage) + 1] || null;
+      const progress = nextStage ? Math.round((score - currentStage.threshold) / (nextStage.threshold - currentStage.threshold) * 100) : 100;
+      
+      return new Response(JSON.stringify({
+        score, stage: currentStage.name, icon: currentStage.icon,
+        description: currentStage.description,
+        nextStage: nextStage ? nextStage.name : 'MAX',
+        progress: Math.min(progress, 100),
+        components: { vessels: M, crystals: C, bonds: B, frictionPolicies: F, contextPods: P },
+        stages: stages.map(s => s.name),
+      }), { headers: h });
+    }
+
     // ── EVENT LOG ──
     if (url.pathname === '/api/events' && request.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') || '20');
