@@ -547,6 +547,55 @@ export default {
         fleetViscosity: visc,
       }), { headers: h });
     }
+
+    // ── Dream Engine: Background Task Registration ──
+    if (url.pathname === '/api/dream/tasks' && request.method === 'GET') {
+      const tasks = await env.FLEET_KV.list({ prefix: 'dream-task:', limit: 50 });
+      const result = [];
+      for (const key of tasks.keys) {
+        const t = await env.FLEET_KV.get(key.name, 'json');
+        if (t) result.push(t);
+      }
+      return new Response(JSON.stringify({ tasks: result, count: result.length }), { headers: h });
+    }
+    if (url.pathname === '/api/dream/tasks' && request.method === 'POST') {
+      const body = await request.json();
+      const taskId = 'dream-task:' + Date.now();
+      const task = {
+        id: taskId, vessel: body.vessel || 'unknown',
+        prompt: body.prompt || '', model: body.model || 'deepseek-chat',
+        status: 'queued', createdAt: Date.now(), startedAt: null, completedAt: null,
+        result: null, tokens: 0,
+      };
+      await env.FLEET_KV.put(taskId, JSON.stringify(task), { expirationTtl: 86400 });
+      return new Response(JSON.stringify(task), { status: 201, headers: h });
+    }
+    // ── Dream Checkpoint: Save progress of long-running dreams ──
+    if (url.pathname === '/api/dream/checkpoint' && request.method === 'POST') {
+      const body = await request.json();
+      const taskId = body.taskId;
+      if (!taskId) return new Response(JSON.stringify({ error: 'taskId required' }), { status: 400, headers: h });
+      const existing = await env.FLEET_KV.get(taskId, 'json');
+      if (!existing) return new Response(JSON.stringify({ error: 'task not found' }), { status: 404, headers: h });
+      existing.status = 'checkpointed';
+      existing.checkpoint = body.data || {};
+      existing.lastCheckpointAt = Date.now();
+      await env.FLEET_KV.put(taskId, JSON.stringify(existing), { expirationTtl: 86400 });
+      return new Response(JSON.stringify(existing), { headers: h });
+    }
+    // ── Dream Degradation: Pause/restart failed dreams ──
+    if (url.pathname === '/api/dream/degrade' && request.method === 'POST') {
+      const body = await request.json();
+      const taskId = body.taskId;
+      if (!taskId) return new Response(JSON.stringify({ error: 'taskId required' }), { status: 400, headers: h });
+      const existing = await env.FLEET_KV.get(taskId, 'json');
+      if (!existing) return new Response(JSON.stringify({ error: 'task not found' }), { status: 404, headers: h });
+      existing.status = body.action === 'restart' ? 'queued' : 'degraded';
+      existing.degradedAt = Date.now();
+      existing.degradeReason = body.reason || 'unknown';
+      await env.FLEET_KV.put(taskId, JSON.stringify(existing), { expirationTtl: 86400 });
+      return new Response(JSON.stringify(existing), { headers: h });
+    }
     // ── EVENT LOG ──
     if (url.pathname === '/api/events' && request.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') || '20');
