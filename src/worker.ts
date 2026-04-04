@@ -149,7 +149,9 @@ function landingPage(): string {
 #last-update{text-align:center;color:#475569;font-size:.75rem;margin-top:1rem}
 .auto{position:fixed;top:1rem;right:1rem;display:flex;align-items:center;gap:.5rem;font-size:.75rem;color:#64748b}
 </style></head><body>
-<div class="header"><h1>⚓ Fleet Orchestrator</h1><p>Captain's Bridge — real-time fleet health & coordination</p></div>
+<div class="header">
+      <img src="https://cocapn-logos.casey-digennaro.workers.dev/img/cocapn-logo-v1.png" alt="Cocapn" style="width:64px;height:auto;margin-bottom:.5rem;border-radius:8px;display:block;margin-left:auto;margin-right:auto">
+      <h1>⚓ Fleet Orchestrator</h1><p>Captain's Bridge — real-time fleet health & coordination</p></div>
 <div class="stats">
 <div class="stat"><div class="n n-info" id="total">-</div><div class="l">Vessels</div></div>
 <div class="stat"><div class="n n-ok" id="healthy">-</div><div class="l">Healthy</div></div>
