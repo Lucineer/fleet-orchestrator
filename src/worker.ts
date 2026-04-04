@@ -161,15 +161,34 @@ document.getElementById('filters').addEventListener('click',e=>{
 });
 
 async function check(){
-  const resp=await fetch('/api/fleet/check');
-  const snap=await resp.json();
-  allResults=snap.results;
-  document.getElementById('total').textContent=snap.total;
-  document.getElementById('healthy').textContent=snap.healthy;
-  document.getElementById('degraded').textContent=snap.degraded;
-  document.getElementById('down').textContent=snap.down+snap.timeout;
-  document.getElementById('latency').textContent=snap.avgLatencyMs+'ms';
-  document.getElementById('last-update').textContent='Last check: '+new Date(snap.timestamp).toLocaleTimeString();
+  // Check from browser (client-side, reliable)
+  const promises = FLEET.map(async (v) => {
+    const start = Date.now();
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const resp = await fetch(v.url + '/health', { signal: controller.signal });
+      clearTimeout(timeout);
+      return { vesselId: v.id, url: v.url, status: resp.status === 200 ? 'healthy' : resp.status >= 500 ? 'down' : 'degraded', statusCode: resp.status, latencyMs: Date.now() - start, timestamp: Date.now() };
+    } catch (e) {
+      return { vesselId: v.id, url: v.url, status: 'timeout', statusCode: 0, latencyMs: Date.now() - start, timestamp: Date.now() };
+    }
+  });
+  allResults = await Promise.allSettled(promises).then(r => r.filter(x => x.status === 'fulfilled').map(x => x.value));
+  
+  // Report to server for caching
+  fetch('/api/fleet/report', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(allResults) }).catch(()=>{});
+  
+  const healthy = allResults.filter(r => r.status === 'healthy').length;
+  const down = allResults.filter(r => r.status !== 'healthy').length;
+  const avgLat = allResults.length > 0 ? Math.round(allResults.reduce((a,r) => a + r.latencyMs, 0) / allResults.length) : 0;
+  
+  document.getElementById('total').textContent = allResults.length;
+  document.getElementById('healthy').textContent = healthy;
+  document.getElementById('degraded').textContent = 0;
+  document.getElementById('down').textContent = down;
+  document.getElementById('latency').textContent = avgLat + 'ms';
+  document.getElementById('last-update').textContent = 'Last check: ' + new Date().toLocaleTimeString();
   render();
 }
 
@@ -205,13 +224,20 @@ export default {
       return new Response(JSON.stringify({ status: 'ok', vessel: 'fleet-orchestrator', fleet: DEFAULT_FLEET.length }), { headers: h });
     }
 
-    // Fleet check — poll all vessels
+    // Fleet check — server-side poll (best effort from worker)
     if (url.pathname === '/api/fleet/check') {
       const results = await checkFleet(DEFAULT_FLEET);
       const snapshot = buildSnapshot(results);
-      // Cache snapshot
       await env.FLEET_KV.put('snapshot:latest', JSON.stringify(snapshot));
-      // Keep last 24h of snapshots
+      await env.FLEET_KV.put(`snapshot:${snapshot.timestamp}`, JSON.stringify(snapshot), { expirationTtl: 86400 });
+      return new Response(JSON.stringify(snapshot), { headers: h });
+    }
+
+    // Fleet check — client-reported results (from browser)
+    if (url.pathname === '/api/fleet/report' && request.method === 'POST') {
+      const body = await request.json() as HealthResult[];
+      const snapshot = buildSnapshot(body);
+      await env.FLEET_KV.put('snapshot:latest', JSON.stringify(snapshot));
       await env.FLEET_KV.put(`snapshot:${snapshot.timestamp}`, JSON.stringify(snapshot), { expirationTtl: 86400 });
       return new Response(JSON.stringify(snapshot), { headers: h });
     }
