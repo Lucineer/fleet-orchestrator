@@ -629,6 +629,169 @@ export default {
       return new Response(JSON.stringify(escalation), { status: 201, headers: h });
     }
 
+
+    // ── Context Pods: User-owned data vaults ──
+    if (url.pathname === '/api/pods' && request.method === 'GET') {
+      const userId = url.searchParams.get('userId') || 'anonymous';
+      const pods = await env.FLEET_KV.list({ prefix: 'pod:' + userId + ':', limit: 20 });
+      const result = [];
+      for (const key of pods.keys) {
+        const p = await env.FLEET_KV.get(key.name, 'json');
+        if (p) result.push(p);
+      }
+      return new Response(JSON.stringify({ userId, pods: result, count: result.length }), { headers: h });
+    }
+    if (url.pathname === '/api/pods' && request.method === 'POST') {
+      const body = await request.json();
+      const userId = body.userId || 'anonymous';
+      const podId = 'pod:' + userId + ':' + (body.name || 'default').replace(/[^a-z0-9-]/gi, '-');
+      const pod = {
+        id: podId, userId, name: body.name || 'default',
+        data: body.data || {}, schema: body.schema || 'freeform',
+        vessels: body.vessels || [], // which vessels can access
+        encrypted: body.encrypted || false,
+        createdAt: Date.now(), updatedAt: Date.now(),
+      };
+      await env.FLEET_KV.put(podId, JSON.stringify(pod), { expirationTtl: 2592000 });
+      return new Response(JSON.stringify(pod), { status: 201, headers: h });
+    }
+    if (url.pathname === '/api/pods/export' && request.method === 'GET') {
+      const podId = url.searchParams.get('podId');
+      if (!podId) return new Response(JSON.stringify({ error: 'podId required' }), { status: 400, headers: h });
+      const pod = await env.FLEET_KV.get(podId, 'json');
+      if (!pod) return new Response(JSON.stringify({ error: 'pod not found' }), { status: 404, headers: h });
+      // Export as JSON
+      return new Response(JSON.stringify({ pod, exported: true, format: 'json', timestamp: Date.now() }), { headers: { ...h, 'Content-Disposition': 'attachment; filename="pod-export.json"' } });
+    }
+
+
+    // ── Crystallized Actualization Graph ──
+    // The graph IS the sloppy logic — cached insights shrink model usage over time
+    if (url.pathname === '/api/crystal' && request.method === 'GET') {
+      const domain = url.searchParams.get('domain') || 'fleet';
+      const insights = await env.FLEET_KV.list({ prefix: 'crystal:' + domain + ':', limit: 50 });
+      const result = [];
+      for (const key of insights.keys) {
+        const i = await env.FLEET_KV.get(key.name, 'json');
+        if (i) result.push(i);
+      }
+      // Sort by crystallization level (confidence)
+      result.sort((a, b) => (b.crystallization || 0) - (a.crystallization || 0));
+      return new Response(JSON.stringify({
+        domain, insights: result, count: result.length,
+        totalCrystallized: result.filter(i => i.crystallization >= 0.8).length,
+      }), { headers: h });
+    }
+    if (url.pathname === '/api/crystal' && request.method === 'POST') {
+      const body = await request.json();
+      const domain = body.domain || 'fleet';
+      const id = 'crystal:' + domain + ':' + Date.now();
+      const insight = {
+        id, domain,
+        concept: body.concept || '', source: body.source || 'unknown',
+        crystallization: body.crystallization || 0.1, // 0=fluid, 1=crystal
+        phase: body.crystallization >= 0.8 ? 'solid' : body.crystallization >= 0.3 ? 'metastatic' : 'fluid',
+        connections: body.connections || [], // links to other insights
+        usageCount: 0, proven: false,
+        createdAt: Date.now(),
+      };
+      await env.FLEET_KV.put(id, JSON.stringify(insight), { expirationTtl: 7776000 });
+      return new Response(JSON.stringify(insight), { status: 201, headers: h });
+    }
+    // Traverse the crystal graph before model calls
+    if (url.pathname === '/api/crystal/query' && request.method === 'POST') {
+      const body = await request.json();
+      const query = body.query || '';
+      const domain = body.domain || 'fleet';
+      const all = await env.FLEET_KV.list({ prefix: 'crystal:' + domain + ':', limit: 100 });
+      const insights = [];
+      for (const key of all.keys) {
+        const i = await env.FLEET_KV.get(key.name, 'json');
+        if (i && i.concept && i.concept.toLowerCase().includes(query.toLowerCase())) {
+          insights.push(i);
+        }
+      }
+      // If high-crystallization insight found, skip model call
+      const cached = insights.filter(i => i.crystallization >= 0.8);
+      return new Response(JSON.stringify({
+        query, domain,
+        cachedHits: cached, needModelCall: cached.length === 0,
+        allMatches: insights,
+      }), { headers: h });
+    }
+
+
+    // ── Friction Layer: Sovereignty-by-design consent protocol ──
+    // Category A (structural), B (hireable vessel), C (grey area)
+    if (url.pathname === '/api/friction' && request.method === 'GET') {
+      const policies = await env.FLEET_KV.list({ prefix: 'friction-policy:', limit: 50 });
+      const result = [];
+      for (const key of policies.keys) {
+        const p = await env.FLEET_KV.get(key.name, 'json');
+        if (p) result.push(p);
+      }
+      const catCount = { A: 0, B: 0, C: 0 };
+      result.forEach(p => catCount[(p.category || 'C') as keyof typeof catCount]++);
+      return new Response(JSON.stringify({
+        policies: result, total: result.length,
+        categories: catCount,
+        interpretation: 'A=structural/protocol, B=hireable-vessel, C=grey-area'
+      }), { headers: h });
+    }
+    if (url.pathname === '/api/friction' && request.method === 'POST') {
+      const body = await request.json();
+      const id = 'friction-policy:' + (body.name || 'unnamed').replace(/[^a-z0-9-]/gi, '-');
+      const policy = {
+        id, name: body.name || 'unnamed',
+        category: body.category || 'C', // A, B, or C
+        description: body.description || '',
+        consentRequired: body.consentRequired !== false,
+        dataScope: body.dataScope || 'none', // what data it accesses
+        vesselsAffected: body.vesselsAffected || [],
+        autoApprove: body.autoApprove || false,
+        reviewIntervalDays: body.reviewIntervalDays || 90,
+        createdAt: Date.now(),
+      };
+      await env.FLEET_KV.put(id, JSON.stringify(policy), { expirationTtl: 2592000 });
+      return new Response(JSON.stringify(policy), { status: 201, headers: h });
+    }
+    // Consent check: can vessel X do action Y?
+    if (url.pathname === '/api/friction/check' && request.method === 'POST') {
+      const body = await request.json();
+      const vesselId = body.vesselId || 'unknown';
+      const action = body.action || 'unknown';
+      // Check if any friction policy applies
+      const policies = await env.FLEET_KV.list({ prefix: 'friction-policy:', limit: 50 });
+      let blocked = false;
+      let requiresConsent = false;
+      let policyName = '';
+      for (const key of policies.keys) {
+        const p = await env.FLEET_KV.get(key.name, 'json');
+        if (p && p.consentRequired && p.vesselsAffected && p.vesselsAffected.includes(vesselId)) {
+          blocked = true;
+          requiresConsent = true;
+          policyName = p.name;
+          break;
+        }
+      }
+      return new Response(JSON.stringify({
+        vesselId, action, allowed: !blocked, requiresConsent,
+        policy: policyName || null,
+      }), { headers: h });
+    }
+
+
+    // ── Fleet Commons: Free public AI, rate-limited, zero LLM cost ──
+    if (url.pathname === '/api/commons' && request.method === 'GET') {
+      const stats = await env.FLEET_KV.get('commons:stats', 'json') || { totalRequests: 0, uniqueIPs: 0 };
+      return new Response(JSON.stringify({
+        status: 'active', type: 'public_utility',
+        rateLimit: '20 requests/IP/day', cost: 0,
+        stats,
+        description: 'Free public AI access, rate-limited, instantiated as public utility'
+      }), { headers: h });
+    }
+
     // ── EVENT LOG ──
     if (url.pathname === '/api/events' && request.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') || '20');
