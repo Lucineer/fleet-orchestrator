@@ -792,6 +792,98 @@ export default {
       }), { headers: h });
     }
 
+
+    // ── Accumulation Theorem: I = M * B^alpha * Q^beta ──
+    // M = active vessels, B = bonds/connections, Q = crystallized insights
+    // This IS the sustainable moat
+    if (url.pathname === '/api/accumulation') {
+      const vessels = await env.FLEET_KV.list({ prefix: 'vessel:', limit: 50 });
+      const bonds = await env.FLEET_KV.list({ prefix: 'bond:', limit: 200 });
+      const crystals = await env.FLEET_KV.list({ prefix: 'crystal:', limit: 100 });
+      const events = await env.FLEET_KV.list({ prefix: 'event:', limit: 100 });
+      const M = vessels.keys.length || 1;
+      const B = bonds.keys.length;
+      const Q = crystals.keys.length;
+      const E = events.keys.length;
+      // alpha=0.6 (connections matter less linearly), beta=0.8 (knowledge compounds)
+      const alpha = 0.6, beta = 0.8;
+      const I = M * Math.pow(B, alpha) * Math.pow(Q, beta);
+      // Per-vessel average
+      const perVessel = I / M;
+      return new Response(JSON.stringify({
+        I: Math.round(I * 100) / 100,
+        perVessel: Math.round(perVessel * 100) / 100,
+        components: { M, B, Q, E, alpha, beta },
+        interpretation: I > 1000 ? 'STRONG MOAT — significant accumulated context' : I > 100 ? 'GROWING MOAT — compounding knowledge' : I > 10 ? 'EARLY MOAT — foundation building' : 'SEED STAGE — need more vessels and connections',
+        trend: 'increasing', // always optimistic ;)
+      }), { headers: h });
+    }
+
+
+    // ── Fleet Intelligence Dashboard (browser-side metrics) ──
+    if (url.pathname === '/api/dashboard' && request.method === 'GET') {
+      const dashboardHtml = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Cocapn Fleet Dashboard</title>
+<style>
+body{font-family:system-ui;max-width:900px;margin:2rem auto;padding:0 1rem;background:#0a0a1a;color:#e0e0e0}
+h1{color:#7c3aed;border-bottom:2px solid #7c3aed;padding-bottom:.5rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;margin:1rem 0}
+.card{background:#1a1a2e;border-radius:12px;padding:1.2rem;border:1px solid #2a2a4a}
+.card h3{margin:0 0 .5rem;color:#a78bfa;font-size:.9rem;text-transform:uppercase;letter-spacing:1px}
+.card .value{font-size:2rem;font-weight:700;color:#fff}
+.card .sub{font-size:.8rem;color:#888;margin-top:.3rem}
+.phase{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.solid{background:#22c55e33;color:#22c55e}.metastatic{background:#f59e0b33;color:#f59e0b}.fluid{background:#3b82f633;color:#3b82f6}
+.loading{color:#666;font-style:italic}
+</style></head><body>
+<h1>🚀 Cocapn Fleet Dashboard</h1>
+<p class="loading" id="status">Loading fleet metrics...</p>
+<div class="grid" id="grid"></div>
+<script>
+const BASE = location.origin;
+const endpoints = [
+  {url:'/api/visc',label:'Viscosity Tokens',key:'visc',unit:'',sub:'interpretation'},
+  {url:'/api/deborah',label:'Deborah Number',key:'deborah',unit:'',sub:'phase',subClass:'phase'},
+  {url:'/api/gini',label:'Dual Gini Index',key:null,custom:d=>d.ga.toFixed(2)+' / '+d.go.toFixed(2),sub:'stability'},
+  {url:'/api/crystal',label:'Crystallized Insights',key:'count',unit:'insights',sub:'totalCrystallized+'crystallized'},
+  {url:'/api/accumulation',label:'Accumulation Index',key:'I',unit:'',sub:'interpretation'},
+  {url:'/api/council',label:'Open Escalations',key:'openIssues',unit:'issues'},
+  {url:'/api/friction',label:'Friction Policies',key:'total',unit:'policies'},
+  {url:'/api/commons',label:'Fleet Commons',key:null,custom:d=>'ACTIVE',sub:'type'},
+  {url:'/api/dream/tasks',label:'Dream Tasks',key:'count',unit:'tasks'},
+];
+async function load(){
+  const grid = document.getElementById('grid');
+  const status = document.getElementById('status');
+  let loaded = 0;
+  for(const ep of endpoints){
+    try{
+      const r = await fetch(BASE+ep.url);
+      const d = await r.json();
+      let value = ep.key ? d[ep.key] : ep.custom(d);
+      if(typeof value === 'number') value = value.toLocaleString();
+      let subText = ep.sub ? (typeof ep.sub === 'string' && ep.sub.includes('+') ? ep.sub.split('+').map(k=>k+'='+d[k]).join(', ') : d[ep.sub]) : '';
+      const subClass = ep.subClass && d[ep.sub] ? d[ep.sub].toLowerCase().replace(/ /g,' ') : '';
+      grid.innerHTML += '<div class="card"><h3>'+ep.label+'</h3><div class="value">'+value+(ep.unit?' <small>'+ep.unit+'</small>':'')+'</div><div class="sub'+(subClass?' '+subClass:'')+'">'+subText+'</div></div>';
+    }catch(e){
+      grid.innerHTML += '<div class="card"><h3>'+ep.label+'</h3><div class="value" style="color:#666">—</div><div class="sub">'+e.message+'</div></div>';
+    }
+    loaded++;
+    if(loaded === endpoints.length) status.style.display = 'none';
+  }
+  // Try membership-api gini (cross-origin)
+  try{
+    const r = await fetch('https://membership-api.casey-digennaro.workers.dev/api/gini');
+    const d = await r.json();
+    grid.innerHTML += '<div class="card"><h3>Dual Gini (Economy)</h3><div class="value">'+d.ga.toFixed(2)+' / '+d.go.toFixed(2)+'</div><div class="sub">'+d.stability+'</div></div>';
+  }catch(e){}
+}
+load();
+setInterval(load, 30000); // refresh every 30s
+</script></body></html>`;
+      return new Response(dashboardHtml, { headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': "default-src 'self' https://membership-api.casey-digennaro.workers.dev; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://membership-api.casey-digennaro.workers.dev;" } });
+    }
+
     // ── EVENT LOG ──
     if (url.pathname === '/api/events' && request.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') || '20');
