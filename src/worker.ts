@@ -337,12 +337,15 @@ export default {
         consecutiveFails: 3, autoLiftAt: Date.now() + 900000, // 15 min
       };
       await env.FLEET_KV.put(`quarantine:${body.vesselId}`, JSON.stringify(entry), { expirationTtl: 3600 });
+      await env.FLEET_KV.put(`event:quarantine:${entry.quarantinedAt}:${body.vesselId}`, JSON.stringify({ type: 'QUARANTINE', vesselId: body.vesselId, reason: body.reason, errorRate: body.errorRate, timestamp: entry.quarantinedAt }), { expirationTtl: 86400 });
       return new Response(JSON.stringify(entry), { headers: h, status: 201 });
     }
     if (url.pathname === '/api/quarantine/lift' && request.method === 'POST') {
       const body = await request.json() as { vesselId: string };
       await env.FLEET_KV.delete(`quarantine:${body.vesselId}`);
-      return new Response(JSON.stringify({ lifted: true, vesselId: body.vesselId, at: Date.now() }), { headers: h });
+      const liftTs = Date.now();
+      await env.FLEET_KV.put(`event:quarantine-lift:${liftTs}:${body.vesselId}`, JSON.stringify({ type: 'QUARANTINE_LIFT', vesselId: body.vesselId, reason: 'manual', timestamp: liftTs }), { expirationTtl: 86400 });
+      return new Response(JSON.stringify({ lifted: true, vesselId: body.vesselId, at: liftTs }), { headers: h });
     }
 
     // ── DEB: Execution Bonds ──
@@ -386,6 +389,110 @@ export default {
       bond.status = 'committed'; bond.completedAt = Date.now();
       await env.FLEET_KV.put(`bond:${body.taskId}`, JSON.stringify(bond), { expirationTtl: 86400 });
       return new Response(JSON.stringify(bond), { headers: h });
+    }
+    // DEB: Heartbeat — extend lease (every 15s per CRP-39)
+    if (url.pathname === '/api/bonds/heartbeat' && request.method === 'POST') {
+      const body = await request.json() as { taskId: string; vesselId: string; progress?: number };
+      const bond = await env.FLEET_KV.get<ExecutionBond>(`bond:${body.taskId}`, 'json');
+      if (!bond || bond.status !== 'claimed') {
+        return new Response(JSON.stringify({ error: 'not claimed', taskId: body.taskId }), { status: 409, headers: h });
+      }
+      if (bond.leaseExpires && Date.now() > bond.leaseExpires) {
+        // Lease expired — auto-forfeit
+        bond.status = 'failed'; bond.completedAt = Date.now();
+        await env.FLEET_KV.put(`bond:${body.taskId}`, JSON.stringify(bond), { expirationTtl: 86400 });
+        return new Response(JSON.stringify({ error: 'lease expired', taskId: body.taskId, status: 'forfeited' }), { status: 410, headers: h });
+      }
+      bond.leaseExpires = Date.now() + 60000; // extend 60s
+      await env.FLEET_KV.put(`bond:${body.taskId}`, JSON.stringify(bond), { expirationTtl: 86400 });
+      return new Response(JSON.stringify({ taskId: body.taskId, leaseExtended: true, newExpiry: bond.leaseExpires, progress: body.progress }), { headers: h });
+    }
+    // DEB: Auto-forfeit sweep — check all claimed bonds for expired leases
+    if (url.pathname === '/api/bonds/sweep' && request.method === 'POST') {
+      const list = await env.FLEET_KV.list({ prefix: 'bond:', limit: 100 });
+      const forfeited: ExecutionBond[] = [];
+      const now = Date.now();
+      for (const key of list.keys) {
+        const bond = await env.FLEET_KV.get<ExecutionBond>(key.name, 'json');
+        if (bond && bond.status === 'claimed' && bond.leaseExpires && now > bond.leaseExpires + 30000) { // 30s grace
+          bond.status = 'failed'; bond.completedAt = now;
+          await env.FLEET_KV.put(key.name, JSON.stringify(bond), { expirationTtl: 86400 });
+          forfeited.push(bond);
+        }
+      }
+      return new Response(JSON.stringify({ swept: forfeited.length, forfeited }), { headers: h });
+    }
+    // DEB: Fail a bond (explicit)
+    if (url.pathname === '/api/bonds/fail' && request.method === 'POST') {
+      const body = await request.json() as { taskId: string; vesselId: string; reason?: string };
+      const bond = await env.FLEET_KV.get<ExecutionBond>(`bond:${body.taskId}`, 'json');
+      if (!bond) return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: h });
+      bond.status = 'failed'; bond.completedAt = Date.now();
+      await env.FLEET_KV.put(`bond:${body.taskId}`, JSON.stringify(bond), { expirationTtl: 86400 });
+      return new Response(JSON.stringify({ taskId: body.taskId, status: 'failed', reason: body.reason }), { headers: h });
+    }
+
+    // ── TRUST: Attestation & Reputation ──
+    if (url.pathname === '/api/trust' && request.method === 'POST') {
+      const body = await request.json() as { vesselId: string; metric: string; value: number; confidence?: number };
+      const entry = { ...body, timestamp: Date.now(), confidence: body.confidence || 0.5 };
+      await env.FLEET_KV.put(`trust:${body.vesselId}:${Date.now()}`, JSON.stringify(entry), { expirationTtl: 86400 });
+      return new Response(JSON.stringify(entry), { headers: h, status: 201 });
+    }
+    if (url.pathname === '/api/trust/:vesselId') {
+      // Cannot use path params in Workers router, use query
+    }
+    if (url.pathname.startsWith('/api/trust/') && request.method === 'GET') {
+      const vesselId = url.pathname.split('/')[3];
+      const list = await env.FLEET_KV.list({ prefix: `trust:${vesselId}:`, limit: 50 });
+      const attestations: any[] = [];
+      for (const key of list.keys) {
+        const att = await env.FLEET_KV.get(key.name, 'json');
+        if (att) attestations.push(att);
+      }
+      // Compute trust score
+      const avgError = attestations.filter(a => a.metric === 'error_rate').reduce((s, a) => s + a.value, 0) / Math.max(attestations.length, 1);
+      const avgConfidence = attestations.reduce((s, a) => s + (a.confidence || 0), 0) / Math.max(attestations.length, 1);
+      const trustScore = Math.max(0, 1 - avgError * 3) * avgConfidence;
+      return new Response(JSON.stringify({
+        vesselId, trustScore: Math.round(trustScore * 100) / 100,
+        attestations: attestations.length,
+        recommendation: trustScore > 0.7 ? 'TRUST' : trustScore > 0.3 ? 'DEGRADE' : 'QUARANTINE',
+        recentAttestations: attestations.slice(-10),
+      }), { headers: h });
+    }
+
+    // ── HCQ: Auto-lift expired quarantines + fleet event log ──
+    if (url.pathname === '/api/quarantine/sweep' && request.method === 'POST') {
+      const list = await env.FLEET_KV.list({ prefix: 'quarantine:', limit: 50 });
+      const lifted: string[] = [];
+      const now = Date.now();
+      for (const key of list.keys) {
+        const entry = await env.FLEET_KV.get<QuarantineEntry>(key.name, 'json');
+        if (entry && now > entry.autoLiftAt) {
+          await env.FLEET_KV.delete(key.name);
+          // Log the lift event
+          await env.FLEET_KV.put(`event:quarantine-lift:${now}:${entry.vesselId}`, JSON.stringify({
+            type: 'QUARANTINE_LIFT', vesselId: entry.vesselId,
+            reason: 'auto-lift (15min expired)', timestamp: now,
+          }), { expirationTtl: 86400 });
+          lifted.push(entry.vesselId);
+        }
+      }
+      return new Response(JSON.stringify({ swept: lifted.length, lifted }), { headers: h });
+    }
+
+    // ── EVENT LOG ──
+    if (url.pathname === '/api/events' && request.method === 'GET') {
+      const limit = parseInt(url.searchParams.get('limit') || '20');
+      const list = await env.FLEET_KV.list({ prefix: 'event:', limit });
+      const events: any[] = [];
+      for (const key of list.keys) {
+        const evt = await env.FLEET_KV.get(key.name, 'json');
+        if (evt) events.push(evt);
+      }
+      events.sort((a, b) => b.timestamp - a.timestamp);
+      return new Response(JSON.stringify({ count: events.length, events: events.slice(0, limit) }), { headers: h });
     }
 
     return new Response('Not found', { status: 404 });
