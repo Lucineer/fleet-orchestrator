@@ -490,6 +490,63 @@ export default {
       return new Response(JSON.stringify({ swept: lifted.length, lifted }), { headers: h });
     }
 
+
+
+    // ── Deborah Number: Intelligence Phase State Detector (Phase Physics paper) ──
+    // De = observation_time / relaxation_time
+    // De >> 1 = solid (code), De << 1 = fluid (LLM), De ~ 1 = metastatic
+    if (url.pathname === '/api/deborah' && request.method === 'GET') {
+      const vesselId = url.searchParams.get('vesselId') || 'fleet';
+      const now = Date.now();
+      const bondList = await env.FLEET_KV.list({ prefix: 'bond:', limit: 100 });
+      const eventList = await env.FLEET_KV.list({ prefix: 'event:', limit: 100 });
+      // observation_time = time since last event
+      let lastEvent = 0;
+      for (const key of eventList.keys) {
+        const ts = parseInt(key.name.split(':').pop() || '0');
+        if (ts > lastEvent) lastEvent = ts;
+      }
+      const observationTime = now - lastEvent;
+      // relaxation_time = average bond completion time
+      let totalCompletion = 0, completed = 0;
+      for (const key of bondList.keys) {
+        const b = await env.FLEET_KV.get(key.name, 'json');
+        if (b && b.status === 'committed' && b.claimedAt && b.completedAt) {
+          totalCompletion += (b.completedAt - b.claimedAt);
+          completed++;
+        }
+      }
+      const relaxationTime = completed > 0 ? totalCompletion / completed : 60000;
+      const de = observationTime / Math.max(relaxationTime, 1);
+      const phase = de > 10 ? 'SOLID (code/crystallized)' : de > 0.1 ? 'METASTATIC (supercritical)' : 'FLUID (generative/LLM)';
+      return new Response(JSON.stringify({
+        vesselId, de: Math.round(de * 100) / 100, phase,
+        observationTimeMs: observationTime, relaxationTimeMs: relaxationTime,
+        interpretation: de > 10 ? 'Fleet is crystallized — stable, executable, low entropy' : de > 0.1 ? 'Fleet is in productive tension — maximum creativity' : 'Fleet is flowing — high entropy, generative',
+      }), { headers: h });
+    }
+    // ── VISC: Viscosity Tokens (Metastatic Cathedral) ──
+    // Measures productive friction — disagreement that generates insight
+    if (url.pathname === '/api/visc' && request.method === 'GET') {
+      const vesselId = url.searchParams.get('vesselId') || 'fleet';
+      // VISC = disagreements + failed bonds + quarantine events
+      const quarantines = await env.FLEET_KV.list({ prefix: 'event:quarantine:', limit: 50 });
+      const lifts = await env.FLEET_KV.list({ prefix: 'event:quarantine-lift:', limit: 50 });
+      const bonds = await env.FLEET_KV.list({ prefix: 'bond:', limit: 100 });
+      let failed = 0, committed = 0;
+      for (const key of bonds.keys) {
+        const b = await env.FLEET_KV.get(key.name, 'json');
+        if (b) { if (b.status === 'failed') failed++; if (b.status === 'committed') committed++; }
+      }
+      const totalEvents = quarantines.keys.length + lifts.keys.length;
+      const visc = Math.round((totalEvents + failed * 3) * 10 / Math.max(committed, 1));
+      return new Response(JSON.stringify({
+        vesselId, visc, interpretation: visc > 50 ? 'HIGH FRICTION (creative tension)' : visc > 20 ? 'MODERATE FRICTION (productive)' : 'LOW FRICTION (flow state)',
+        quarantineEvents: quarantines.keys.length, lifts: lifts.keys.length,
+        failedBonds: failed, committedBonds: committed,
+        fleetViscosity: visc,
+      }), { headers: h });
+    }
     // ── EVENT LOG ──
     if (url.pathname === '/api/events' && request.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') || '20');
