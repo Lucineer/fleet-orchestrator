@@ -596,6 +596,39 @@ export default {
       await env.FLEET_KV.put(taskId, JSON.stringify(existing), { expirationTtl: 86400 });
       return new Response(JSON.stringify(existing), { headers: h });
     }
+
+    // ── Council of Captains (Anchorage Constitution) ──
+    // 5-level escalation: Direct → Mediation → Arbitration → Council Vote → Admiral Override
+    if (url.pathname === '/api/council' && request.method === 'GET') {
+      const escalations = await env.FLEET_KV.list({ prefix: 'escalation:', limit: 50 });
+      const issues = [];
+      for (const key of escalations.keys) {
+        const e = await env.FLEET_KV.get(key.name, 'json');
+        if (e) issues.push(e);
+      }
+      // Sort by severity (escalation level)
+      issues.sort((a, b) => (b.level || 0) - (a.level || 0));
+      const levels = ['DIRECT', 'MEDIATION', 'ARBITRATION', 'COUNCIL_VOTE', 'ADMIRAL_OVERRIDE'];
+      return new Response(JSON.stringify({
+        openIssues: issues.filter(i => i.status !== 'resolved').length,
+        issues: issues.slice(0, 10),
+        escalationLevels: levels,
+        constitution: 'Anchorage Constitution v1.0',
+      }), { headers: h });
+    }
+    if (url.pathname === '/api/council/escalate' && request.method === 'POST') {
+      const body = await request.json();
+      const escId = 'escalation:' + Date.now();
+      const escalation = {
+        id: escId, from: body.from || 'unknown', to: body.to || 'fleet',
+        issue: body.issue || '', level: body.level || 1,
+        status: 'open', createdAt: Date.now(), resolvedAt: null,
+        resolution: null, votes: {},
+      };
+      await env.FLEET_KV.put(escId, JSON.stringify(escalation), { expirationTtl: 604800 });
+      return new Response(JSON.stringify(escalation), { status: 201, headers: h });
+    }
+
     // ── EVENT LOG ──
     if (url.pathname === '/api/events' && request.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') || '20');
