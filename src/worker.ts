@@ -356,6 +356,46 @@ export default {
       return new Response(JSON.stringify({ lifted: true, vesselId: body.vesselId, at: liftTs }), { headers: h });
     }
 
+    // ── Fleet Event Bus (polling-based, CF-compatible) ──
+    // POST /api/events — emit event. GET /api/events?since=cursor — consume.
+    if (url.pathname === '/api/events' && request.method === 'POST') {
+      const body = await request.json() as { type: string; vesselId: string; data?: any; target?: string };
+      const evtId = 'evt:' + Date.now() + ':' + Math.random().toString(36).slice(2, 6);
+      const evt = { id: evtId, type: body.type, vesselId: body.vesselId, target: body.target || 'all', data: body.data, timestamp: Date.now() };
+      await env.FLEET_KV.put(evtId, JSON.stringify(evt), { expirationTtl: 86400 }); // 24h TTL
+      // Update event index (cursor)
+      let idx: string[] = [];
+      try { idx = JSON.parse(await env.FLEET_KV.get('event_index') || '[]'); } catch {}
+      idx.push(evtId);
+      if (idx.length > 500) { // keep last 500
+        for (const old of idx.splice(0, idx.length - 500)) { try { await env.FLEET_KV.delete(old); } catch {} }
+      }
+      await env.FLEET_KV.put('event_index', JSON.stringify(idx));
+      return new Response(JSON.stringify(evt), { headers: h, status: 201 });
+    }
+    if (url.pathname === '/api/events' && request.method === 'GET') {
+      const since = url.searchParams.get('since') || '';
+      const vessel = url.searchParams.get('vessel');
+      const type = url.searchParams.get('type');
+      let idx: string[] = [];
+      try { idx = JSON.parse(await env.FLEET_KV.get('event_index') || '[]'); } catch {}
+      // Find cursor position
+      let start = 0;
+      if (since) { const pos = idx.indexOf(since); if (pos >= 0) start = pos + 1; }
+      const events: any[] = [];
+      for (const id of idx.slice(start, start + 50)) {
+        try {
+          const evt = JSON.parse(await env.FLEET_KV.get(id) || '');
+          if (!evt) continue;
+          // Filter: vessel-specific or broadcast
+          if (vessel && evt.target !== 'all' && evt.target !== vessel) continue;
+          if (type && evt.type !== type) continue;
+          events.push(evt);
+        } catch {}
+      }
+      return new Response(JSON.stringify({ events, cursor: idx[Math.min(start + 50, idx.length) - 1] || idx[idx.length - 1] || '', hasMore: start + 50 < idx.length }), { headers: h });
+    }
+
     // ── DEB: Execution Bonds ──
     if (url.pathname === '/api/bonds' && request.method === 'GET') {
       const status = url.searchParams.get('status');
