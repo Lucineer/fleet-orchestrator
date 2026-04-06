@@ -1,0 +1,39 @@
+{
+  "name": "fleet-orchestrator",
+  "displayName": "Fleet Orchestrator",
+  "version": "1.0.0",
+  "type": "cocapn-vessel",
+  "description": "Fleet Orchestrator",
+  "icon": "\ud83c\udfdb",
+  "color": "#3b82f6",
+  "category": "infrastructure",
+  "capabilities": [
+    "coordination",
+    "events"
+  ],
+  "secrets": {
+    "DEEPSEEK_API_KEY": {
+      "required": false,
+      "hint": "https://platform.deepseek.com/api_keys"
+    },
+    "DEEPINFRA_API_KEY": {
+      "required": false,
+      "hint": "https://deepinfra.com/dashboard/keys"
+    },
+    "SILICONFLOW_API_KEY": {
+      "required": false,
+      "hint": "https://cloud.siliconflow.cn"
+    }
+  },
+  "endpoints": {
+    "health": "/health"
+  },
+  "deployment": {
+    "platform": "cloudflare-workers",
+    "minPlan": "free"
+  },
+  "local": {
+    "supported": true,
+    "port": 8787
+  }
+}
