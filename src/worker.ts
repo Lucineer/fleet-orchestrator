@@ -248,6 +248,7 @@ export default {
     if (url.pathname === '/health') {
       return new Response(JSON.stringify({ status: 'ok', vessel: 'fleet-orchestrator', fleet: DEFAULT_FLEET.length }), { headers: h });
     }
+    if (url.pathname === '/vessel.json') { try { const vj = await import('./vessel.json', { with: { type: 'json' } }); return new Response(JSON.stringify(vj.default || vj), { headers: { 'Content-Type': 'application/json' } }); } catch { return new Response('{}', { headers: { 'Content-Type': 'application/json' } }); } }
 
     // Fleet check — server-side poll (best effort from worker)
     if (url.pathname === '/api/fleet/check') {
