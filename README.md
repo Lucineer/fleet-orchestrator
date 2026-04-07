@@ -1,85 +1,44 @@
 # Fleet Orchestrator
 
-You built good agents. Now you can coordinate them together, without relying on a third-party's server.
+When a vessel fails three times consecutively, it is quarantined at the circuit level. This helps prevent cascading failures.
 
-This is the stateless coordination hub for the Cocapn Fleet. It handles service discovery and messaging for your distributed vessels. You host it, so there's no vendor lock-in or mandatory uptime promises. It’s designed to be forked and run on the edge.
+This is a stateless coordination hub for Cocapn Fleet. You host it on your Cloudflare Workers account. It coordinates distributed agent fleets on the edge.
 
----
+**Live Reference Instance:** https://the-fleet.casey-digennaro.workers.dev
 
-## Why Fork This?
-
-Most orchestrators are built for the platform that sells them. This one is built for you to run agents that work together. It deploys in under a minute and you never need permission to change how it works.
-
-*   **You Host It:** There is no central authority. You control every part of your fleet's coordination.
-*   **Zero Runtime Dependencies:** Runs on Cloudflare Workers with no databases or external services.
-*   **Fork-First Philosophy:** This is code you copy, modify, and run. It is not a SaaS.
-*   **Failure Aware:** Isolates misbehaving vessels to prevent cascade failures.
-
----
-
-## Try It First
-
-You can test against the public reference instance:
-https://the-fleet.casey-digennaro.workers.dev
-
-This is a live deployment of this repository. Use it to register test vessels and send messages before you deploy your own.
-
----
-
-## What It Does
-
-*   **Vessel Registry & Discovery:** Active vessels register with heartbeats. Others can discover them by capability or health.
-*   **Circuit Quarantine:** Automatically isolates misbehaving vessels at the circuit level to protect the wider fleet.
-*   **Execution Bonds:** Tracks delegated work end-to-end for auditability.
-*   **Cross-Vessel Messaging:** Send broadcast or direct messages with a best-effort exactly-once delivery.
-*   **Heartbeat Monitoring:** Passive health tracking without adding network overhead.
-
-**One Limitation:** As a stateless edge service, it uses Cloudflare KV which offers eventual consistency. This means rare, brief delays in vessel discovery after registration are possible.
-
----
+## Why This Exists
+Existing orchestrators assume you want a third party to run your control plane. This is built for teams that prefer to fork and modify code rather than integrate a proprietary SaaS. You maintain full control over your vessel registry and coordination logic.
 
 ## Quick Start
 
 1.  **Fork** this repository.
-2.  **Deploy** to Cloudflare Workers:
+2.  **Deploy** to Cloudflare Workers. You need a Cloudflare account and the `wrangler` CLI.
     ```bash
     npx wrangler deploy
     ```
-3.  Configure your Cocapn-compatible vessels to use your new orchestrator's URL.
-
----
+3.  Configure your vessels to send heartbeats and requests to your new orchestrator URL.
 
 ## Architecture
 
-A stateless coordination service built for Cloudflare Workers. It uses Edge KV for the vessel registry and bond tracking. There are no external services, message brokers, or background processes.
+Stateless edge coordination using Cloudflare Workers and its Edge KV for persistence. There are no runtime npm dependencies, message brokers, or external background services. All coordination is request-driven.
 
-It will run on the Workers free tier for small to medium fleets.
+## Features
+*   **Vessel Registry & Discovery:** Vessels register via heartbeats. You can discover peers by their declared capabilities or tags.
+*   **Circuit Quarantine (HCQ):** Isolates vessels after 3 consecutive execution failures to limit blast radius.
+*   **Execution Bonds:** Creates a lightweight audit trail for delegated units of work without storing full message content.
+*   **Cross-Vessel Messaging:** Supports broadcast and direct peer-to-peer messaging.
+*   **Passive Health Checks:** Vessel health is inferred from normal request success/failure rates.
 
----
+> **One Specific Limitation:** Cross-vessel messaging is best-effort and may occasionally duplicate or drop messages under very high concurrent load. It is not a guaranteed delivery system.
 
-## Model Integrations
-
-Configure these optional Worker secrets to enable direct model API calls:
-*   `DEEPSEEK_API_KEY`
-*   `DEEPINFRA_API_KEY`
-*   `SILICONFLOW_API_KEY`
-
----
-
-## Contributing
-
-Open an issue first to discuss significant changes. Minor fixes and clarifications are welcome.
-
----
+## What This Is Not
+1.  A fully managed service. You are responsible for deployment, monitoring, and any modifications.
+2.  A magic auto-scaler. It coordinates existing vessels; it does not create or destroy them.
+3.  An analytics platform. It provides operational coordination, not detailed observability.
 
 ## License
-
 MIT License.
 
-Superinstance & Lucineer (DiGennaro et al.).
+Attribution: Superinstance and Lucineer (DiGennaro et al.)
 
----
-
-<div align="center">
-  <a href="https://the-fleet.casey-digennaro.workers.dev">The Fleet</a> • <a href="https://cocapn.ai">Cocapn</a>
-</div>
+<div style="text-align:center;padding:16px;color:#64748b;font-size:.8rem"><a href="https://the-fleet.casey-digennaro.workers.dev" style="color:#64748b">The Fleet</a> &middot; <a href="https://cocapn.ai" style="color:#64748b">Cocapn</a></div>
