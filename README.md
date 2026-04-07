@@ -1,52 +1,65 @@
 # Fleet Orchestrator
 
-A coordination service for the Cocapn Fleet, providing vessel discovery and messaging. Use it when you need a simple, hostable registry for agents running across different environments.
+You built good agents. Now you can coordinate them together, without relying on a third-party's server.
+
+This is the stateless coordination hub for the Cocapn Fleet. It handles service discovery and messaging for your distributed vessels. You host it, so there's no vendor lock-in or mandatory uptime promises. It’s designed to be forked and run on the edge.
 
 ---
 
-## Why It Exists
+## Why Fork This?
 
-Many multi-agent tools assume all agents run in one place. This service provides a central, but forkable, registry and message bus for agents (vessels) that are deployed independently.
+Most orchestrators are built for the platform that sells them. This one is built for you to run agents that work together. It deploys in under a minute and you never need permission to change how it works.
+
+*   **You Host It:** There is no central authority. You control every part of your fleet's coordination.
+*   **Zero Runtime Dependencies:** Runs on Cloudflare Workers with no databases or external services.
+*   **Fork-First Philosophy:** This is code you copy, modify, and run. It is not a SaaS.
+*   **Failure Aware:** Isolates misbehaving vessels to prevent cascade failures.
+
+---
+
+## Try It First
+
+You can test against the public reference instance:
+https://the-fleet.casey-digennaro.workers.dev
+
+This is a live deployment of this repository. Use it to register test vessels and send messages before you deploy your own.
+
+---
+
+## What It Does
+
+*   **Vessel Registry & Discovery:** Active vessels register with heartbeats. Others can discover them by capability or health.
+*   **Circuit Quarantine:** Automatically isolates misbehaving vessels at the circuit level to protect the wider fleet.
+*   **Execution Bonds:** Tracks delegated work end-to-end for auditability.
+*   **Cross-Vessel Messaging:** Send broadcast or direct messages with a best-effort exactly-once delivery.
+*   **Heartbeat Monitoring:** Passive health tracking without adding network overhead.
+
+**One Limitation:** As a stateless edge service, it uses Cloudflare KV which offers eventual consistency. This means rare, brief delays in vessel discovery after registration are possible.
 
 ---
 
 ## Quick Start
 
-1.  Fork this repository.
-2.  Run `npx wrangler deploy` to deploy to Cloudflare Workers.
-3.  Configure your vessels to point to your new orchestrator's URL.
+1.  **Fork** this repository.
+2.  **Deploy** to Cloudflare Workers:
+    ```bash
+    npx wrangler deploy
+    ```
+3.  Configure your Cocapn-compatible vessels to use your new orchestrator's URL.
 
 ---
 
-## What It Provides
+## Architecture
 
-*   **Vessel Registry:** A central directory where active vessels can register themselves for discovery.
-*   **Cross-Vessel Messaging:** A basic event bus for sending messages between registered vessels.
-*   **Operational Monitoring:** Tracks vessel heartbeat status and request latency.
-*   **Execution Bonds:** Provides a simple mechanism for tracking the outcome of delegated tasks.
-*   **Minimal Dependencies:** The runtime has zero external dependencies.
-*   **Fork-First:** You host and control your own instance.
+A stateless coordination service built for Cloudflare Workers. It uses Edge KV for the vessel registry and bond tracking. There are no external services, message brokers, or background processes.
+
+It will run on the Workers free tier for small to medium fleets.
 
 ---
 
-## How It Works
+## Model Integrations
 
-This is a stateless service built on Cloudflare Workers. It uses a KV store to maintain the active vessel registry, route events, and track basic execution states.
-
-**One Limitation:** The system relies on vessels being HTTP-reachable and providing a `/ping` endpoint for health checks. Agents behind strict firewalls or in fully isolated networks may not be suitable.
-
----
-
-## Live Reference Instance
-
-A public reference instance is available for testing. You can inspect its state and register test vessels.
-https://the-fleet.casey-digennaro.workers.dev
-
----
-
-## Extended Configuration
-
-Configure optional API keys via Worker environment secrets to enable specific vendor integrations:
+Configure these optional Worker secrets to enable direct model API calls:
 *   `DEEPSEEK_API_KEY`
 *   `DEEPINFRA_API_KEY`
 *   `SILICONFLOW_API_KEY`
@@ -55,13 +68,15 @@ Configure optional API keys via Worker environment secrets to enable specific ve
 
 ## Contributing
 
-Open an issue first to discuss significant changes.
+Open an issue first to discuss significant changes. Minor fixes and clarifications are welcome.
 
 ---
 
 ## License
 
-MIT License — Superinstance & Lucineer (DiGennaro et al.).
+MIT License.
+
+Superinstance & Lucineer (DiGennaro et al.).
 
 ---
 
