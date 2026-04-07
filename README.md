@@ -1,71 +1,70 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Lucineer/capitaine/master/docs/capitaine-logo.jpg" alt="Capitaine" width="120">
-</p>
+# Fleet Orchestrator
 
-<h1 align="center">fleet-orchestrator</h1>
-
-<p align="center">Fleet coordination service. Trust, bonds, events, consensus.</p>
-
-<p align="center">
-  <a href="https://github.com/Lucineer/fleet-orchestrator/issues">Issues</a> ·
-  <a href="#the-fleet">The Fleet</a>
-</p>
+A coordination service for the Cocapn Fleet, providing vessel discovery and messaging. Use it when you need a simple, hostable registry for agents running across different environments.
 
 ---
 
-**Fleet service** · Powered by [Capitaine](https://github.com/Lucineer/capitaine) · [Cocapn](https://github.com/Lucineer/cocapn)
+## Why It Exists
 
-A cocapn fleet service running on Cloudflare Workers.
+Many multi-agent tools assume all agents run in one place. This service provides a central, but forkable, registry and message bus for agents (vessels) that are deployed independently.
+
+---
 
 ## Quick Start
 
-```bash
-gh repo fork Lucineer/fleet-orchestrator --clone
-cd fleet-orchestrator
-npx wrangler login
-npx wrangler deploy
-```
+1.  Fork this repository.
+2.  Run `npx wrangler deploy` to deploy to Cloudflare Workers.
+3.  Configure your vessels to point to your new orchestrator's URL.
 
-## The Fleet
+---
 
+## What It Provides
 
-<details>
-<summary><strong>⚓ The Fleet</strong></summary>
+*   **Vessel Registry:** A central directory where active vessels can register themselves for discovery.
+*   **Cross-Vessel Messaging:** A basic event bus for sending messages between registered vessels.
+*   **Operational Monitoring:** Tracks vessel heartbeat status and request latency.
+*   **Execution Bonds:** Provides a simple mechanism for tracking the outcome of delegated tasks.
+*   **Minimal Dependencies:** The runtime has zero external dependencies.
+*   **Fork-First:** You host and control your own instance.
 
-**Flagship vessels**
+---
 
-- [cocapn.ai](https://github.com/Lucineer/capitaine)
-- [personallog.ai](https://github.com/Lucineer/personallog-ai)
-- [businesslog.ai](https://github.com/Lucineer/businesslog-ai)
-- [studylog.ai](https://github.com/Lucineer/studylog-ai)
-- [makerlog.ai](https://github.com/Lucineer/makerlog-ai)
-- [playerlog.ai](https://github.com/Lucineer/playerlog-ai)
-- [dmlog.ai](https://github.com/Lucineer/dmlog-ai)
-- [reallog.ai](https://github.com/Lucineer/reallog-ai)
-- [deckboss.ai](https://github.com/Lucineer/deckboss-ai)
+## How It Works
 
-**Fleet services**
+This is a stateless service built on Cloudflare Workers. It uses a KV store to maintain the active vessel registry, route events, and track basic execution states.
 
-- [Fleet Catalog](https://github.com/Lucineer/capitaine/blob/master/docs/fleet/FLEET.md)
-- [Git Agent (full)](https://github.com/Lucineer/git-agent)
-- [Cocapn Lite (minimal)](https://github.com/Lucineer/cocapn-lite)
-- [Fleet Orchestrator](https://github.com/Lucineer/fleet-orchestrator)
-- [Dead Reckoning Engine](https://github.com/Lucineer/dead-reckoning-engine)
-- [Dream Engine](https://github.com/Lucineer/dream-engine)
-- [Seed UI (5 layers)](https://github.com/Lucineer/seed-ui)
+**One Limitation:** The system relies on vessels being HTTP-reachable and providing a `/ping` endpoint for health checks. Agents behind strict firewalls or in fully isolated networks may not be suitable.
 
-**For power users**
+---
 
-- [Cocapn Lite (tabula rasa)](https://github.com/Lucineer/cocapn-lite)
-- [Cocapn (core platform)](https://github.com/Lucineer/cocapn)
-- [ZeroClaw (framework)](https://github.com/Lucineer/zeroclaw)
+## Live Reference Instance
 
-[View all 106 repos →](https://github.com/orgs/Lucineer/repositories)
-[Fleet manifest →](https://github.com/Lucineer/capitaine/blob/master/docs/fleet/FLEET.md)
+A public reference instance is available for testing. You can inspect its state and register test vessels.
+https://the-fleet.casey-digennaro.workers.dev
 
-</details>
+---
 
+## Extended Configuration
+
+Configure optional API keys via Worker environment secrets to enable specific vendor integrations:
+*   `DEEPSEEK_API_KEY`
+*   `DEEPINFRA_API_KEY`
+*   `SILICONFLOW_API_KEY`
+
+---
+
+## Contributing
+
+Open an issue first to discuss significant changes.
+
+---
 
 ## License
 
-MIT · Superinstance & Lucineer (DiGennaro et al.)
+MIT License — Superinstance & Lucineer (DiGennaro et al.).
+
+---
+
+<div align="center">
+  <a href="https://the-fleet.casey-digennaro.workers.dev">The Fleet</a> • <a href="https://cocapn.ai">Cocapn</a>
+</div>
