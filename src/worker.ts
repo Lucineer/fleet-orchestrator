@@ -9,7 +9,7 @@
 // Superinstance & Lucineer (DiGennaro et al.) — 2026-04-03
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*;";
+const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*; frame-ancestors 'none';";
 const SUBDOMAIN = 'casey-digennaro.workers.dev';
 
 interface Env { FLEET_KV: KVNamespace; }
